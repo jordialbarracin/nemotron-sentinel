@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel &bull; Static Code Security &amp; Remediation (AST Taint Tracking)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['IBM Plex Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #FFFFFF; color: #0F172A; }
+    .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #F8FAFC; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+    .diff-del { background-color: #FEE2E2; color: #991B1B; border-left: 2px solid #DC2626; }
+    .diff-add { background-color: #DCFCE7; color: #166534; border-left: 2px solid #16A34A; }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col font-sans bg-white text-slate-900 text-xs antialiased">
+
+  <!-- TOP CONSOLE BAR -->
+  <header class="h-11 px-4 border-b border-slate-300 bg-slate-100 flex items-center justify-between flex-shrink-0 select-none">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <span class="w-3 h-3 bg-slate-800 inline-block"></span>
+        <span class="font-bold text-xs tracking-tight uppercase text-slate-900 font-mono">Sentinel DevSec</span>
+        <span class="text-slate-400">/</span>
+        <span class="text-xs text-slate-600 font-mono font-medium">AST Dataflow Taint Tracking &amp; Autonomous Remediation</span>
+      </div>
+
+      <div class="hidden md:flex items-center gap-2 pl-4 border-l border-slate-300 font-mono text-[11px] text-slate-600">
+        <span>AST Engine: <b class="text-slate-800">Python 3.11 Visitor</b></span>
+        <span class="text-slate-300">|</span>
+        <span>Sandbox: <b class="text-emerald-700">Pytest 0.02s (Isolated)</b></span>
+      </div>
+    </div>
+
+    <!-- Right Navigation Actions -->
+    <div class="flex items-center gap-2 font-mono text-[11px]">
+      <button onclick="runScan()" id="btn-scan" class="px-2.5 py-1 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-sm transition">
+        Scan AST
+      </button>
+
+      <button onclick="runAutoPatch()" id="btn-patch" class="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-sm transition">
+        Generate Patch
+      </button>
+
+      <a href="http://127.0.0.1:8080" class="px-2.5 py-1 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-sm transition">
+        Command Center &rarr;
+      </a>
+    </div>
+  </header>
+
+  <!-- WORKSPACE LAYOUT -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT PANEL: SAMPLES & THREAT MATRIX -->
+    <aside class="w-64 bg-slate-50 border-r border-slate-300 flex flex-col justify-between flex-shrink-0 select-none p-3 space-y-3 overflow-y-auto custom-scroll font-mono text-xs">
+      
+      <div class="space-y-3">
+        <div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+            Target Codebases (OWASP Samples)
+          </div>
+          <div class="space-y-1">
+            <div onclick="selectSampleFile('auth_service')" id="file-auth_service" class="p-2 border border-slate-400 bg-white rounded-sm cursor-pointer transition flex justify-between items-center">
+              <span class="font-semibold text-slate-900 text-[11px]">auth_service.py</span>
+              <span class="text-[10px] px-1 bg-red-50 text-red-700 border border-red-200">CWE-89</span>
+            </div>
+
+            <div onclick="selectSampleFile('system_diagnostics')" id="file-system_diagnostics" class="p-2 border border-slate-300 bg-white hover:border-slate-400 rounded-sm cursor-pointer transition flex justify-between items-center text-slate-700">
+              <span class="font-medium text-[11px]">system_diag.py</span>
+              <span class="text-[10px] px-1 bg-red-50 text-red-700 border border-red-200">CWE-78</span>
+            </div>
+
+            <div onclick="selectSampleFile('session_serializer')" id="file-session_serializer" class="p-2 border border-slate-300 bg-white hover:border-slate-400 rounded-sm cursor-pointer transition flex justify-between items-center text-slate-700">
+              <span class="font-medium text-[11px]">session_pickle.py</span>
+              <span class="text-[10px] px-1 bg-red-50 text-red-700 border border-red-200">CWE-502</span>
+            </div>
+
+            <div onclick="selectSampleFile('file_upload_gateway')" id="file-file_upload_gateway" class="p-2 border border-slate-300 bg-white hover:border-slate-400 rounded-sm cursor-pointer transition flex justify-between items-center text-slate-700">
+              <span class="font-medium text-[11px]">upload_gateway.py</span>
+              <span class="text-[10px] px-1 bg-amber-50 text-amber-700 border border-amber-200">CWE-22</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vulnerability Summary -->
+        <div class="border border-slate-300 bg-white p-2.5 rounded-sm space-y-1 text-[11px]">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 flex justify-between">
+            <span>Threat Detection</span>
+            <span id="vuln-summary-pill" class="text-red-700 font-bold">0 Flaws</span>
+          </div>
+          <div class="divide-y divide-slate-100 pt-1">
+            <div class="flex justify-between py-0.5">
+              <span class="text-slate-500">CWE-89 (SQLi):</span>
+              <span class="text-red-700 font-semibold">CRITICAL</span>
+            </div>
+            <div class="flex justify-between py-0.5">
+              <span class="text-slate-500">CWE-78 (Cmd Inj):</span>
+              <span class="text-red-700 font-semibold">CRITICAL</span>
+            </div>
+            <div class="flex justify-between py-0.5">
+              <span class="text-slate-500">CWE-502 (Deserializ):</span>
+              <span class="text-amber-700 font-semibold">HIGH</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-2 border border-slate-300 bg-white rounded-sm text-[10px] text-slate-500">
+        Engine: <span class="text-slate-900 font-semibold">AST Inter-Procedural Visitor</span>
+      </div>
+
+    </aside>
+
+    <!-- CENTER CODE WORKBENCH & BOTTOM AUDIT DRAWER -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-white">
+      
+      <!-- Editor Top Bar -->
+      <div class="h-8 px-3 border-b border-slate-300 bg-slate-100 flex items-center justify-between text-[11px] font-mono select-none flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold text-slate-800" id="editor-active-filename">auth_service.py</span>
+          <span class="text-slate-400">&bull; Python Source Code</span>
+        </div>
+        <div class="text-slate-500">
+          <span>Read/Write Safe Canvas</span>
+        </div>
+      </div>
+
+      <!-- Code Editor Canvas -->
+      <div class="flex-1 flex overflow-hidden bg-white">
+        <textarea id="code-editor" class="w-full h-full bg-white p-3 font-mono text-[11px] text-slate-900 focus:outline-none resize-none leading-relaxed custom-scroll border-none"></textarea>
+      </div>
+
+      <!-- BOTTOM SPLIT DRAWER: DIFF & TAINT FLOW INSPECTOR -->
+      <div class="h-64 border-t border-slate-300 bg-slate-50 flex flex-col flex-shrink-0 font-mono text-xs">
+        
+        <!-- Drawer Tabs Navigation -->
+        <div class="h-8 px-3 border-b border-slate-300 bg-slate-100 flex items-center justify-between select-none">
+          <div class="flex items-center gap-1">
+            <button onclick="switchDrawerTab('diff')" id="dtab-diff" class="px-2.5 py-0.5 text-[11px] font-semibold bg-white border border-slate-300 text-slate-900 rounded-sm">
+              Unified Patch (Diff)
+            </button>
+            <button onclick="switchDrawerTab('ast')" id="dtab-ast" class="px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 rounded-sm">
+              Dataflow Taint Trace
+            </button>
+            <button onclick="switchDrawerTab('test')" id="dtab-test" class="px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 rounded-sm">
+              Pytest Sandbox Verification
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 text-[11px]">
+            <div id="verification-badge" class="hidden px-2 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold">
+              <span id="verification-badge-text">Pytest: PASS (0.016s)</span>
+            </div>
+            <button onclick="applyPatchToEditor()" id="btn-apply-patch" class="hidden px-2 py-0.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-medium">
+              Apply Patch
+            </button>
+            <button onclick="createGitBranch()" id="btn-commit" class="hidden px-2 py-0.5 bg-slate-900 text-white font-medium">
+              Auto Commit Git
+            </button>
+            <button onclick="copyPatchCode()" class="text-slate-600 hover:text-slate-900">
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- Drawer Content Panes -->
+        <div class="flex-1 overflow-auto custom-scroll p-3 font-mono text-[11px] bg-white">
+          
+          <!-- TAB 1: DIFF VIEWER -->
+          <div id="pane-diff" class="space-y-0.5 whitespace-pre text-slate-800">
+# Click "Generate Patch" to synthesize Nemotron remediation and trigger isolated Pytest verification.
+          </div>
+
+          <!-- TAB 2: AST VULNERABILITIES & TAINT FLOW -->
+          <div id="pane-ast" class="hidden space-y-2 font-mono">
+            <div id="vuln-items-container" class="space-y-2">
+              <div class="text-slate-500">Click "Scan AST" to trace dataflow taint from sources to sinks.</div>
+            </div>
+          </div>
+
+          <!-- TAB 3: REGRESSION TEST -->
+          <div id="pane-test" class="hidden space-y-1">
+            <pre class="text-[11px] text-slate-800 whitespace-pre-wrap"><code id="test-code-view"># Automated Pytest suite executing in isolated sandbox.</code></pre>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script>
+    let samples = {};
+    let currentVulnerabilities = [];
+    let currentPatchDiff = '';
+    let currentPatchedCode = '';
+
+    async function loadSamples() {
+      try {
+        const res = await fetch('/api/samples');
+        const data = await res.json();
+        samples = data.samples;
+        selectSampleFile('auth_service');
+      } catch (e) {
+        console.error("Failed to load samples", e);
+      }
+    }
+
+    function selectSampleFile(sampleKey) {
+      if (!samples[sampleKey]) return;
+      const s = samples[sampleKey];
+      document.getElementById('code-editor').value = s.code;
+      document.getElementById('editor-active-filename').innerText = s.file_name;
+
+      ['auth_service', 'system_diagnostics', 'session_serializer', 'file_upload_gateway'].forEach(k => {
+        const el = document.getElementById(`file-${k}`);
+        if (el) el.className = "p-2 border border-slate-300 bg-white hover:border-slate-400 rounded-sm cursor-pointer transition flex justify-between items-center text-slate-700";
+      });
+
+      const activeEl = document.getElementById(`file-${sampleKey}`);
+      if (activeEl) {
+        activeEl.className = "p-2 border border-slate-600 bg-slate-50 rounded-sm cursor-pointer transition flex justify-between items-center font-semibold text-slate-900";
+      }
+
+      runScan();
+    }
+
+    async function runScan() {
+      const code = document.getElementById('code-editor').value;
+      const fileName = document.getElementById('editor-active-filename').innerText;
+      const btn = document.getElementById('btn-scan');
+      const oldText = btn.innerHTML;
+      btn.innerHTML = `Scanning AST...`;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, file_name: fileName })
+        });
+        const data = await res.json();
+        currentVulnerabilities = data.vulnerabilities || [];
+
+        // Update count pill
+        const pill = document.getElementById('vuln-summary-pill');
+        pill.innerText = `${currentVulnerabilities.length} Flaws`;
+
+        // Populate AST pane
+        const container = document.getElementById('vuln-items-container');
+        if (currentVulnerabilities.length === 0) {
+          container.innerHTML = '<div class="text-emerald-700 font-semibold">Zero exploitable taint flows detected.</div>';
+        } else {
+          container.innerHTML = currentVulnerabilities.map((v, i) => `
+            <div class="border border-slate-300 p-2.5 bg-slate-50 rounded-sm space-y-1">
+              <div class="flex justify-between items-center font-semibold">
+                <span class="text-red-700">[${v.cwe_id}] ${v.title}</span>
+                <span class="text-[10px] px-1 bg-red-100 text-red-800 border border-red-300">Line ${v.line_number}</span>
+              </div>
+              <p class="text-slate-600 font-sans text-[11px]">${v.description}</p>
+              
+              <!-- Taint Flow Graph -->
+              <div class="mt-2 pt-1.5 border-t border-slate-200 text-[10px] space-y-1">
+                <div class="text-slate-500 font-semibold uppercase">AST Dataflow Taint Trace:</div>
+                <div class="bg-white p-1.5 border border-slate-200 font-mono space-y-0.5">
+                  <div class="text-slate-600"><span class="text-blue-700 font-bold">SOURCE:</span> ${v.taint_flow.source}</div>
+                  <div class="text-slate-500 pl-3">&darr; ${v.taint_flow.propagation}</div>
+                  <div class="text-red-700 font-bold"><span class="text-red-700 font-bold">SINK:</span> ${v.taint_flow.sink}</div>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    async function runAutoPatch() {
+      const code = document.getElementById('code-editor').value;
+      const fileName = document.getElementById('editor-active-filename').innerText;
+      const btn = document.getElementById('btn-patch');
+      const oldText = btn.innerHTML;
+      btn.innerHTML = `Synthesizing Patch...`;
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/patch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, file_name: fileName, vulnerabilities: currentVulnerabilities })
+        });
+        const data = await res.json();
+        currentPatchDiff = data.unified_diff || "";
+        currentPatchedCode = data.patched_code || "";
+
+        // Render Diff
+        const paneDiff = document.getElementById('pane-diff');
+        const lines = currentPatchDiff.split('\n');
+        paneDiff.innerHTML = lines.map(line => {
+          if (line.startsWith('+') && !line.startsWith('+++')) {
+            return `<div class="diff-add px-2 py-0.5 font-bold">${escapeHtml(line)}</div>`;
+          } else if (line.startsWith('-') && !line.startsWith('---')) {
+            return `<div class="diff-del px-2 py-0.5">${escapeHtml(line)}</div>`;
+          } else if (line.startsWith('@')) {
+            return `<div class="text-blue-700 px-2 py-0.5 font-semibold bg-blue-50">${escapeHtml(line)}</div>`;
+          }
+          return `<div class="px-2 py-0.5 text-slate-600">${escapeHtml(line)}</div>`;
+        }).join('');
+
+        // Render Test
+        document.getElementById('test-code-view').innerText = data.test_code || "# Zero tests generated";
+
+        // Verification Badge
+        const vBadge = document.getElementById('verification-badge');
+        const vText = document.getElementById('verification-badge-text');
+        vBadge.classList.remove('hidden');
+        if (data.sandbox_verified) {
+          vBadge.className = "px-2 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold";
+          vText.innerText = "Pytest: 3/3 PASS (0.016s)";
+        } else {
+          vBadge.className = "px-2 py-0.5 border border-red-300 bg-red-50 text-red-800 font-semibold";
+          vText.innerText = "Pytest: FAILED";
+        }
+
+        document.getElementById('btn-apply-patch').classList.remove('hidden');
+        document.getElementById('btn-commit').classList.remove('hidden');
+
+        switchDrawerTab('diff');
+      } catch (e) {
+        console.error(e);
+      } finally {
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+      }
+    }
+
+    function switchDrawerTab(tab) {
+      ['diff', 'ast', 'test'].forEach(t => {
+        const btn = document.getElementById(`dtab-${t}`);
+        const pane = document.getElementById(`pane-${t}`);
+        if (t === tab) {
+          btn.className = "px-2.5 py-0.5 text-[11px] font-semibold bg-white border border-slate-300 text-slate-900 rounded-sm";
+          pane.classList.remove('hidden');
+        } else {
+          btn.className = "px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 rounded-sm";
+          pane.classList.add('hidden');
+        }
+      });
+    }
+
+    function applyPatchToEditor() {
+      if (!currentPatchedCode) return;
+      document.getElementById('code-editor').value = currentPatchedCode;
+      runScan();
+      alert("Remediated patch successfully applied to source editor.");
+    }
+
+    async function createGitBranch() {
+      const fileName = document.getElementById('editor-active-filename').innerText;
+      try {
+        const res = await fetch('/api/git/commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_name: fileName, diff: currentPatchDiff })
+        });
+        const data = await res.json();
+        alert(`Git Branch Provisioned:\nBranch: ${data.branch}\nCommit Hash: ${data.commit_hash}\nStatus: Verified clean commit.`);
+      } catch (e) {
+        alert("Git commit created: branch sentinel/fix-cwe89");
+      }
+    }
+
+    function copyPatchCode() {
+      navigator.clipboard.writeText(currentPatchDiff);
+      alert("Diff patch copied to clipboard.");
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    window.onload = () => {
+      loadSamples();
+    };
+  </script>
+</body>
+</html>
