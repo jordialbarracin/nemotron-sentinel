@@ -8,9 +8,9 @@
 ## 💡 Inspiration & Threat Model
 **Crucial Distinction:** Nemotron Sentinel is **NOT** a runtime prompt-filtering guardrail that adds latency to LLM inference. It is an **Autonomous Application Security (AppSec) Agent for CI/CD GitOps pipelines**. 
 
-Over 70% of enterprise software security vulnerabilities (OWASP Top 10, CWE-89 SQL Injection, CWE-78 OS Command Injection, CWE-502 Insecure Deserialization, and CWE-22 Path Traversal) stem from recurring insecure coding patterns in application backends. Traditional static linters merely flag these flaws with noisy, cryptic warnings—leaving overburdened engineering teams to manually figure out fixes, write patches, and verify regression stability.
+Many common application security vulnerabilities (OWASP Top 10, CWE-89 SQL Injection, CWE-78 OS Command Injection, CWE-502 Insecure Deserialization, and CWE-22 Path Traversal) stem from recurring insecure coding patterns in application backends. Traditional static linters merely flag these flaws with noisy, cryptic warnings—leaving overburdened engineering teams to manually figure out fixes, write patches, and verify regression stability.
 
-We created **Nemotron Sentinel**: an autonomous AI cybersecurity engineer powered by **NVIDIA Nemotron-3.5-Lightning on Nebius Token Factory**. Sentinel reconstructs the entire Python AST dataflow, models complex enterprise ORM sinks, synthesizes mathematically sound drop-in unified diff patches, and verifies remediation through an autonomous 3-phase Pytest sandbox in 16ms with zero human intervention.
+We created **Nemotron Sentinel**: an autonomous AI cybersecurity engineer powered by **NVIDIA Nemotron-3.5-Lightning on Nebius Token Factory**. Sentinel reconstructs the entire Python AST dataflow, models complex enterprise ORM sinks, synthesizes mathematically sound drop-in unified diff patches, and runs an automated 3-check verification harness (about 16 ms in local runs) on each patch before committing.
 
 ---
 
@@ -18,23 +18,23 @@ We created **Nemotron Sentinel**: an autonomous AI cybersecurity engineer powere
 
 1. **AST Dataflow Taint Tracking (Source $\rightarrow$ Propagation $\rightarrow$ Sink):**
    - Traverses Python ASTs tracking untrusted external input (HTTP parameters, JSON payloads, CLI arguments) across variable assignments, string formatting (f-strings, `%`, `.format()`), and container dictionaries (`data = {"id": user_id}`).
-   - Reconstructs the complete provenance graph to prove exploitability before raising an alert.
+   - Reconstructs a source-to-sink provenance graph to explain why a finding is flagged.
 
 2. **Enterprise ORM Sinks & Safe-Pattern Differentiation:**
    - Detects unsafe raw query execution in enterprise ORMs:
      - SQLAlchemy: `session.execute(text(f"..."))` or `connection.execute(f"...")`
      - Django: `Model.objects.raw(f"...")` or `Model.objects.extra(where=[...])`
-   - **Zero False-Positives on Parameterized ORM Patterns in Benchmark:** Explicitly models and verifies that parameterized ORM queries (`session.query(User).filter(User.id == user_id)` or `Model.objects.filter(id=user_id)`) are recognized as safe sinks and never flagged as vulnerabilities.
+   - **No false positives on the parameterized-ORM samples in our test suite:** Explicitly models and verifies that parameterized ORM queries (`session.query(User).filter(User.id == user_id)` or `Model.objects.filter(id=user_id)`) are recognized as safe sinks and never flagged as vulnerabilities.
 
 3. **Autonomous Nemotron Patch Synthesis:**
    - Feeds AST flow diagrams and raw code to NVIDIA Nemotron-3.5-Lightning on Nebius Token Factory.
-   - Generates production-ready drop-in replacements that eliminate vulnerabilities while preserving 100% of underlying business logic and typing contracts.
+   - Generates production-ready drop-in replacements that eliminate vulnerabilities while intended to preserve business logic and typing contracts (checked structurally, not exhaustively).
 
 4. **Rigorous Multi-Scenario Sandbox Pytest Verification:**
-   - Executes patched code in an isolated temporary sandbox across 3 verification scenarios:
+   - Runs three automated checks on each patch (structural / AST-level; nothing is executed against a live database):
      1. **AST Syntactic Integrity:** Parses the patch with `ast.parse()` to prove 0 syntax errors or broken grammar.
-     2. **Exploit Neutralization:** Injects real exploit vectors (`' OR 1=1 --`) and proves parameters are handled strictly as literal scalar data, preventing SQL grammar manipulation.
-     3. **Semantic & Type Preservation:** Asserts function signatures, return types, and arguments remain preserved.
+     2. **Exploit Neutralization (placeholder):** the generated test only records a hostile input string; it does not run an injection payload. Real behavioral testing is future work.
+     3. **Semantic & Type Preservation:** Asserts at least one function remains and each keeps at least one argument.
 
 5. **Automated Git Branch & PR Automation:**
    - Synthesizes exact unified diffs (`diff --git a/app.py b/app.py`) compatible with `git apply`.
@@ -57,7 +57,7 @@ We created **Nemotron Sentinel**: an autonomous AI cybersecurity engineer powere
 ## 📊 Verification Benchmark Results & Threat Model Coverage
 
 ### 1. Threat Model & OWASP CWE Benchmark
-Nemotron Sentinel is evaluated against a canonical benchmark suite of production enterprise vulnerabilities:
+Nemotron Sentinel is tested against six sample vulnerable files bundled with the project (not an external benchmark):
 
 | Scenario | Target Vulnerability | AST Taint Flow Provenance | Auto-Synthesized Remediation | Sandbox Pytest Verification |
 | :--- | :--- | :--- | :--- | :--- |
@@ -71,21 +71,29 @@ Nemotron Sentinel is evaluated against a canonical benchmark suite of production
 ### 2. CI/CD Performance & Telemetry Breakdown
 - **AST Dataflow Taint Traversal:** **8.4 ms** (single-pass abstract syntax tree visitor).
 - **Isolated In-Process Sandbox Verification:** **16.2 ms** measured via `time.perf_counter()` using an in-process AST execution harness and compiled assertion suite (eliminating cold-start `pytest` CLI startup overhead).
-- **Total Developer Feedback Latency:** **< 25 ms** locally; Nemotron LLM patch synthesis takes **~1.1s** on Nebius Token Factory.
+- **Total Developer Feedback Latency:** under 25 ms for local analysis and checks; LLM patch synthesis time depends on the model endpoint and was not benchmarked.
 - **Runtime Inference Latency Overhead:** **0.00 ms** (Nemotron Sentinel operates strictly in CI/CD GitOps pipelines, adding zero latency to live application serving).
 
 ### 3. Comparison: Nemotron Sentinel vs. Legacy Linters (Semgrep, SonarQube, Snyk)
 | Capability | Traditional Static Linters (Semgrep/Sonar) | Nemotron Sentinel |
 | :--- | :--- | :--- |
-| **Vulnerability Detection** | Regex & static AST pattern matching (High Noise) | Full AST dataflow taint graph (Source $\rightarrow$ Prop $\rightarrow$ Sink) |
-| **Enterprise ORM Precision** | Flags parameterized ORMs as false positives | 0 false positives on `session.query()` & Django `filter()` |
+| **Vulnerability Detection** | Varies by ruleset (pattern matching, some dataflow) | AST taint tracking plus regex rules |
+| **Enterprise ORM Precision** | Depends on ruleset | No false positives on our ORM samples (not compared head-to-head) |
 | **Remediation Action** | Passive notification (Requires human engineer) | **Autonomous unified diff synthesis via NVIDIA Nemotron** |
-| **Patch Verification** | None (Risk of breaking production runtime) | **Automated 3-phase sandbox before git commit** |
+| **Patch Verification** | Typically none | Automated structural checks (parse + signature) before git commit |
 | **GitOps Automation** | Read-only PR comment | **Autonomous branch provisioning (`sentinel/fix-...`)** |
 
 ---
 
 ## 🏆 Accomplishments We're Proud Of
-- Moves beyond legacy scanners that merely report bugs: synthesizes and empirically verifies exploit neutralization.
-- Solves enterprise ORM false-positives and false-negatives across SQLAlchemy and Django.
-- Sub-second AST taint analysis and autonomous Pytest verification.
+- Goes beyond reporting: proposes patches and runs automated sanity checks on them.
+- Recognizes parameterized SQLAlchemy / Django patterns as safe in our test samples.
+- Millisecond-scale local AST analysis and verification checks.
+
+
+## Current status & limitations (honest summary)
+- **Real:** a Python `ast`-based scanner plus regex rules detect several CWE patterns (SQL injection, command injection, insecure deserialization, path traversal, XSS, hard-coded secrets); Nemotron-3.5-Lightning (Nebius Token Factory) proposes patches; the console, diffs and git-branch flow run end-to-end.
+- **Fallback:** if the API is unreachable or the output format is invalid, patches come from deterministic string-replacement templates (status `FALLBACK_COMMITTED`).
+- **Verification is structural, not behavioral:** the generated test suite checks that the patched source parses (`ast.parse`) and that function definitions still exist. The "exploit neutralization" test does **not** execute a payload against a database (it is a placeholder assertion). Patches are not proven safe or behavior-preserving.
+- **Benchmark:** "3/3 PASS" refers to the project's own sample files, not an external vulnerability benchmark. Timings are local runs on a development machine.
+- **Comparison with other tools** is a general characterization, not a head-to-head benchmark.
