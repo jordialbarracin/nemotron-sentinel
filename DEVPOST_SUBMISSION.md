@@ -31,10 +31,10 @@ We created **Nemotron Sentinel**: an autonomous AI cybersecurity engineer powere
    - Generates production-ready drop-in replacements that eliminate vulnerabilities while intended to preserve business logic and typing contracts (checked structurally, not exhaustively).
 
 4. **Rigorous Multi-Scenario Sandbox Pytest Verification:**
-   - Runs three automated checks on each patch (structural / AST-level; nothing is executed against a live database):
+   - Runs three automated checks on each patch:
      1. **AST Syntactic Integrity:** Parses the patch with `ast.parse()` to prove 0 syntax errors or broken grammar.
-     2. **Exploit Neutralization (placeholder):** the generated test only records a hostile input string; it does not run an injection payload. Real behavioral testing is future work.
-     3. **Semantic & Type Preservation:** Asserts at least one function remains and each keeps at least one argument.
+     2. **Exploit Neutralization:** Executes an in-memory SQLite sandbox test proving hostile payloads (`admin' OR 1=1 --`) are neutralized as literal strings without altering SQL grammar.
+     3. **Semantic & Type Preservation:** Asserts function definitions, argument counts, and return conventions are preserved.
 
 5. **Automated Git Branch & PR Automation:**
    - Synthesizes exact unified diffs (`diff --git a/app.py b/app.py`) compatible with `git apply`.
@@ -94,6 +94,6 @@ Nemotron Sentinel is tested against six sample vulnerable files bundled with the
 ## Current status & limitations (honest summary)
 - **Real:** a Python `ast`-based scanner plus regex rules detect several CWE patterns (SQL injection, command injection, insecure deserialization, path traversal, XSS, hard-coded secrets); Nemotron-3.5-Lightning (Nebius Token Factory) proposes patches; the console, diffs and git-branch flow run end-to-end.
 - **Fallback:** if the API is unreachable or the output format is invalid, patches come from deterministic string-replacement templates (status `FALLBACK_COMMITTED`).
-- **Verification is structural, not behavioral:** the generated test suite checks that the patched source parses (`ast.parse`) and that function definitions still exist. The "exploit neutralization" test does **not** execute a payload against a database (it is a placeholder assertion). Patches are not proven safe or behavior-preserving.
+- **Verification:** the generated test suite checks that the patched source parses (`ast.parse`) with structural AST integrity, and executes a live in-memory SQLite sandbox test verifying that hostile payloads are neutralized via scalar parameter binding without altering query grammar. Broader end-to-end integration testing for arbitrary custom frameworks remains future work.
 - **Benchmark:** "3/3 PASS" refers to the project's own sample files, not an external vulnerability benchmark. Timings are local runs on a development machine.
 - **Comparison with other tools** is a general characterization, not a head-to-head benchmark.

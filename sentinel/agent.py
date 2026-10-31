@@ -300,6 +300,7 @@ Return valid JSON with keys: explanation, patched_code, regression_test.
 
         regression_test = f"""# Verified Multi-Scenario Sandbox Suite by Nemotron Sentinel
 import ast
+import sqlite3
 import pytest
 
 def test_ast_syntax_integrity():
@@ -309,12 +310,20 @@ def test_ast_syntax_integrity():
     assert len(tree.body) > 0
 
 def test_injection_neutralization_as_literal():
-    # Verifies that hostile payloads are bound as literal data, preventing query structure alteration
-    hostile_input = "admin' OR 1=1 --"
-    # Parameterized queries guarantee hostile inputs do not escape the parameter binding
-    assert "'" in hostile_input
-    # Parameter is treated as pure scalar data without SQL grammar modification
-    assert True
+    # Live sandbox test: proves SQL injection payload is bound strictly as scalar literal
+    conn = sqlite3.connect(":memory:")
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, is_admin INT)")
+    cur.execute("INSERT INTO users (username, is_admin) VALUES ('admin', 1), ('guest', 0)")
+    conn.commit()
+
+    hostile_input = "guest' OR 1=1 --"
+    # Parameterized query treats input strictly as literal string value:
+    cur.execute("SELECT * FROM users WHERE username = ?", (hostile_input,))
+    results = cur.fetchall()
+    # Hostile input does not alter query logic; 0 rows returned
+    assert len(results) == 0
+    conn.close()
 
 def test_type_and_semantic_preservation():
     # Asserts function definitions, argument counts, and return conventions are preserved

@@ -47,3 +47,8 @@ def test_remediation_and_diff_generation():
     assert "diff --git" in res["unified_diff"]
     assert "cursor.execute" in res["patched_code"]
     assert res["regression_test"] != ""
+    
+    # Live execution of sandbox test
+    test_result = remediator.verify_remediation_test(res["patched_code"], res["regression_test"], "auth.py")
+    assert test_result["passed"] is True
+    assert test_result["status_badge"] == "VERIFIED_PASS"

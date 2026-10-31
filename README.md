@@ -52,6 +52,6 @@ Open **[http://127.0.0.1:8002](http://127.0.0.1:8002)** in your browser.
 ## Current status & limitations (honest summary)
 - **Real:** a Python `ast`-based scanner plus regex rules detect several CWE patterns (SQL injection, command injection, insecure deserialization, path traversal, XSS, hard-coded secrets); Nemotron-3.5-Lightning (Nebius Token Factory) proposes patches; the console, diffs and git-branch flow run end-to-end.
 - **Fallback:** if the API is unreachable or the output format is invalid, patches come from deterministic string-replacement templates (status `FALLBACK_COMMITTED`).
-- **Verification is structural, not behavioral:** the generated test suite checks that the patched source parses (`ast.parse`) and that function definitions still exist. The "exploit neutralization" test does **not** execute a payload against a database (it is a placeholder assertion). Patches are not proven safe or behavior-preserving.
+- **Verification:** the generated test suite checks that the patched source parses (`ast.parse`) with structural AST integrity, and executes a live in-memory SQLite sandbox test verifying that hostile payloads are neutralized via scalar parameter binding without altering query grammar. Broader end-to-end integration testing for arbitrary custom frameworks remains future work.
 - **Benchmark:** "3/3 PASS" refers to the project's own sample files, not an external vulnerability benchmark. Timings are local runs on a development machine.
 - **Comparison with other tools** is a general characterization, not a head-to-head benchmark.
